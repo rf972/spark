@@ -34,6 +34,7 @@ import org.apache.spark.sql.catalyst.catalog._
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.catalyst.expressions
 import org.apache.spark.sql.catalyst.expressions._
+import org.apache.spark.sql.catalyst.expressions.aggregate.AggregateExpression
 import org.apache.spark.sql.catalyst.planning.ScanOperation
 import org.apache.spark.sql.catalyst.plans.logical.{InsertIntoDir, InsertIntoStatement, LogicalPlan, Project}
 import org.apache.spark.sql.catalyst.rules.Rule
@@ -347,6 +348,8 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         l.output.toStructType,
         Set.empty,
         Set.empty,
+        Set.empty,
+        Set.empty,
         toCatalystRDD(l, baseRelation.buildScan()),
         baseRelation,
         None) :: Nil
@@ -420,6 +423,8 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         requestedColumns.toStructType,
         pushedFilters.toSet,
         handledFilters,
+        Set.empty,
+        Set.empty,
         scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
         relation.relation,
         relation.catalogTable.map(_.identifier))
@@ -442,6 +447,8 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         requestedColumns.toStructType,
         pushedFilters.toSet,
         handledFilters,
+        Set.empty,
+        Set.empty,
         scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
         relation.relation,
         relation.catalogTable.map(_.identifier))
@@ -689,6 +696,21 @@ object DataSourceStrategy extends PredicateHelper {
     val handledFilters = pushedFilters.toSet -- unhandledFilters
 
     (nonconvertiblePredicates ++ unhandledPredicates, pushedFilters, handledFilters)
+  }
+
+  def translateAggregate(aggregates: AggregateExpression): Option[Aggregate] = {
+
+    def columnAsString(e: Expression): String = e match {
+      case AttributeReference(name, _, _, _) => name
+    }
+
+    aggregates.aggregateFunction match {
+      case aggregate.Min(child) => Some(Min(columnAsString(child)))
+      case aggregate.Max(child) => Some(Max(columnAsString(child)))
+      case aggregate.Average(child) => Some(Avg(columnAsString(child)))
+      case aggregate.Sum(child) => Some(Sum(columnAsString(child)))
+      case _ => None
+    }
   }
 
   /**
