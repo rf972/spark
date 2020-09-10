@@ -80,7 +80,6 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
       withProjectAndFilter(project, filters, dsScan, needsUnsafeConversion = false)
 
       if (agg != null) {
-
         val aggregation = createPhysicalAggregation(
           relation.aggregate.groupingExpressions,
           relation.aggregate.aggregateExpressions,
