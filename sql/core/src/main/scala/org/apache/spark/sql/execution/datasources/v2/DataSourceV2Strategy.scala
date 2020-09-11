@@ -22,13 +22,11 @@ import scala.collection.JavaConverters._
 import org.apache.spark.sql.{AnalysisException, SparkSession, Strategy}
 import org.apache.spark.sql.catalyst.analysis.{ResolvedNamespace, ResolvedTable}
 import org.apache.spark.sql.catalyst.expressions.{And, Expression, NamedExpression, PredicateHelper, SubqueryExpression}
-import org.apache.spark.sql.catalyst.planning.PhysicalAggregation.createPhysicalAggregation
 import org.apache.spark.sql.catalyst.planning.PhysicalOperation
 import org.apache.spark.sql.catalyst.plans.logical._
 import org.apache.spark.sql.connector.catalog.{CatalogV2Util, StagingTableCatalog, SupportsNamespaces, TableCapability, TableCatalog, TableChange}
 import org.apache.spark.sql.connector.read.streaming.{ContinuousStream, MicroBatchStream}
 import org.apache.spark.sql.execution.{FilterExec, LeafExecNode, ProjectExec, RowDataSourceScanExec, SparkPlan}
-import org.apache.spark.sql.execution.aggregate.AggUtils
 import org.apache.spark.sql.execution.datasources.DataSourceStrategy
 import org.apache.spark.sql.execution.streaming.continuous.{WriteToContinuousDataSource, WriteToContinuousDataSourceExec}
 import org.apache.spark.sql.sources.{BaseRelation, TableScan}
@@ -56,8 +54,7 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
 
   override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
     case PhysicalOperation(project, filters, relation @ DataSourceV2ScanRelation(_,
-      V1ScanWrapper(scan, translated, pushed, translatedAggregates, pushedAggregates),
-      output, agg)) =>
+      V1ScanWrapper(scan, translated, pushed, translatedAggregates, pushedAggregates), output)) =>
       val v1Relation = scan.toV1TableScan[BaseRelation with TableScan](session.sqlContext)
       if (v1Relation.schema != scan.readSchema()) {
         throw new IllegalArgumentException(
@@ -77,22 +74,7 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
         unsafeRowRDD,
         v1Relation,
         tableIdentifier = None)
-      withProjectAndFilter(project, filters, dsScan, needsUnsafeConversion = false)
-
-      if (agg != null) {
-        val aggregation = createPhysicalAggregation(
-          relation.aggregate.groupingExpressions,
-          relation.aggregate.aggregateExpressions,
-          relation.aggregate.child).get
-
-        AggUtils.planAggregate(
-          aggregation._1,
-          aggregation._2,
-          aggregation._3,
-          withProjectAndFilter(project, filters, dsScan, needsUnsafeConversion = false))
-      } else {
-        withProjectAndFilter(project, filters, dsScan, needsUnsafeConversion = false) :: Nil
-      }
+      withProjectAndFilter(project, filters, dsScan, needsUnsafeConversion = false) :: Nil
 
     case PhysicalOperation(project, filters, relation: DataSourceV2ScanRelation) =>
       // projection and filters were already pushed down in the optimizer.
@@ -215,7 +197,7 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
 
     case DeleteFromTable(relation, condition) =>
       relation match {
-        case DataSourceV2ScanRelation(table, _, output, _) =>
+        case DataSourceV2ScanRelation(table, _, output) =>
           if (condition.exists(SubqueryExpression.hasSubquery)) {
             throw new AnalysisException(
               s"Delete by condition with subquery is not supported: $condition")

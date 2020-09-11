@@ -698,7 +698,7 @@ object DataSourceStrategy extends PredicateHelper {
     (nonconvertiblePredicates ++ unhandledPredicates, pushedFilters, handledFilters)
   }
 
-  def translateAggregate(aggregates: AggregateExpression): Option[Aggregate] = {
+  def translateAggregate(aggregates: AggregateExpression): Option[AggregateFunction] = {
 
     def columnAsString(e: Expression): String = e match {
       case AttributeReference(name, _, _, _) => name
