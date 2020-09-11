@@ -118,8 +118,7 @@ case class DataSourceV2Relation(
 case class DataSourceV2ScanRelation(
     table: Table,
     scan: Scan,
-    output: Seq[AttributeReference],
-    aggregate: Aggregate = null) extends LeafNode with NamedRelation {
+    output: Seq[AttributeReference]) extends LeafNode with NamedRelation {
 
   override def name: String = table.name()
 
