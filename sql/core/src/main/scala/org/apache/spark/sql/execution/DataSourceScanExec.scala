@@ -25,7 +25,6 @@ import org.apache.commons.lang3.StringUtils
 import org.apache.hadoop.fs.Path
 
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.{InternalRow, TableIdentifier}
 import org.apache.spark.sql.catalyst.catalog.BucketSpec
 import org.apache.spark.sql.catalyst.expressions._
@@ -36,7 +35,7 @@ import org.apache.spark.sql.execution.datasources._
 import org.apache.spark.sql.execution.datasources.parquet.{ParquetFileFormat => ParquetSource}
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.internal.SQLConf
-import org.apache.spark.sql.sources.{AggregateFunction, BaseRelation, Filter}
+import org.apache.spark.sql.sources.{Aggregation, BaseRelation, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import org.apache.spark.util.Utils
@@ -103,8 +102,7 @@ case class RowDataSourceScanExec(
     requiredSchema: StructType,
     filters: Set[Filter],
     handledFilters: Set[Filter],
-    aggregates: Set[AggregateFunction],
-    handledAggregates: Set[AggregateFunction],
+    aggregation: Aggregation,
     rdd: RDD[InternalRow],
     @transient relation: BaseRelation,
     tableIdentifier: Option[TableIdentifier])
@@ -135,13 +133,17 @@ case class RowDataSourceScanExec(
     val markedFilters = for (filter <- filters) yield {
       if (handledFilters.contains(filter)) s"*$filter" else s"$filter"
     }
-    val markedggregates = for (aggregate <- aggregates) yield {
-      if (handledAggregates.contains(aggregate)) s"*$aggregate" else s"$aggregate"
+    val markedAggregates = for (aggregate <- aggregation.aggregateExpressions) yield {
+      s"*$aggregate"
+    }
+    val markedGroupby = for (groupby <- aggregation.groupByExpressions) yield {
+      s"*$groupby"
     }
     Map(
       "ReadSchema" -> requiredSchema.catalogString,
       "PushedFilters" -> markedFilters.mkString("[", ", ", "]"),
-      "PushedAggregates" -> markedggregates.mkString("[", ", ", "]"))
+      "PushedAggregates" -> markedAggregates.mkString("[", ", ", "]"),
+      "PushedGroupby" -> markedGroupby.mkString("[", ", ", "]"))
   }
 
   // Don't care about `rdd` and `tableIdentifier` when canonicalizing.

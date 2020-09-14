@@ -54,7 +54,7 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
 
   override def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
     case PhysicalOperation(project, filters, relation @ DataSourceV2ScanRelation(_,
-      V1ScanWrapper(scan, translated, pushed, translatedAggregates, pushedAggregates), output)) =>
+      V1ScanWrapper(scan, translated, pushed, aggregation), output)) =>
       val v1Relation = scan.toV1TableScan[BaseRelation with TableScan](session.sqlContext)
       if (v1Relation.schema != scan.readSchema()) {
         throw new IllegalArgumentException(
@@ -69,8 +69,7 @@ class DataSourceV2Strategy(session: SparkSession) extends Strategy with Predicat
         output.toStructType,
         translated.toSet,
         pushed.toSet,
-        translatedAggregates.toSet,
-        pushedAggregates.toSet,
+        aggregation,
         unsafeRowRDD,
         v1Relation,
         tableIdentifier = None)
