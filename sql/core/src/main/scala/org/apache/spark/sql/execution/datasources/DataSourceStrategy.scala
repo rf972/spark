@@ -348,7 +348,7 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         l.output.toStructType,
         Set.empty,
         Set.empty,
-        Aggregation(Seq.empty[AggregateFunction], Seq.empty[String]),
+        Aggregation(Seq.empty[AggregateFunc], Seq.empty[String]),
         toCatalystRDD(l, baseRelation.buildScan()),
         baseRelation,
         None) :: Nil
@@ -422,7 +422,7 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         requestedColumns.toStructType,
         pushedFilters.toSet,
         handledFilters,
-        Aggregation(Seq.empty[AggregateFunction], Seq.empty[String]),
+        Aggregation(Seq.empty[AggregateFunc], Seq.empty[String]),
         scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
         relation.relation,
         relation.catalogTable.map(_.identifier))
@@ -445,7 +445,7 @@ case class DataSourceStrategy(conf: SQLConf) extends Strategy with Logging with 
         requestedColumns.toStructType,
         pushedFilters.toSet,
         handledFilters,
-        Aggregation(Seq.empty[AggregateFunction], Seq.empty[String]),
+        Aggregation(Seq.empty[AggregateFunc], Seq.empty[String]),
         scanBuilder(requestedColumns, candidatePredicates, pushedFilters),
         relation.relation,
         relation.catalogTable.map(_.identifier))
@@ -695,10 +695,14 @@ object DataSourceStrategy extends PredicateHelper {
     (nonconvertiblePredicates ++ unhandledPredicates, pushedFilters, handledFilters)
   }
 
-  def translateAggregate(aggregates: AggregateExpression): Option[AggregateFunction] = {
+  def translateAggregate(aggregates: AggregateExpression): Option[AggregateFunc] = {
 
     def columnAsString(e: Expression): String = e match {
       case AttributeReference(name, _, _, _) => name
+      case Cast(child, _, _) => child match {
+        case AttributeReference(name, _, _, _) => name
+        case _ => ""
+      }
       case _ => ""
     }
 
