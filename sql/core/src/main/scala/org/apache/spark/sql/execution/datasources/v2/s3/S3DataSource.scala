@@ -95,7 +95,8 @@ class S3ScanBuilder(schema: StructType,
   def pushFilters(filters: Array[Filter]): Array[Filter] = {
     logger.info("S3ScanBuilder:pushFilters" + filters.toList)
     scanFilters = filters
-    scanFilters
+    // return empty array to indicate we pushed down all the filters.
+    new Array[Filter](0)
   }
 }
 
