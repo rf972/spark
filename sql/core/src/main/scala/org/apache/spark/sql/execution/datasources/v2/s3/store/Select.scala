@@ -32,7 +32,6 @@ import com.amazonaws.services.s3.model.SelectObjectContentEvent.RecordsEvent
 import com.amazonaws.services.s3.model.SelectObjectContentRequest
 import com.amazonaws.services.s3.model.SelectObjectContentResult
 import com.amazonaws.services.s3.model.SSECustomerKey
-import org.apache.hadoop.conf.Configuration
 
 import org.apache.spark.sql.sources._
 import org.apache.spark.sql.types._
@@ -77,20 +76,22 @@ object Select {
   }
 
   def requestParquet(bucket: String, key: String, params: Map[String, String],
-    schema: StructType, filters: Array[Filter],
-    hadoopConfiguration: Configuration): SelectObjectContentRequest = {
+    schema: StructType, filters: Array[Filter]): SelectObjectContentRequest = {
 
     new SelectObjectContentRequest() { request =>
       request.setBucketName(bucket)
       request.setKey(key)
       request.setExpression(FilterPushdown.queryFromSchema(schema, filters))
       request.setExpressionType(ExpressionType.SQL)
+
+      /* Temporarily removed hadoopConfiguration: Configuration as a parameter.
       val algo = hadoopConfiguration.get(SERVER_ENCRYPTION_ALGORITHM, null)
       if (algo != null) {
         request.withSSECustomerKey(sseCustomerKey(algo,
-          hadoopConfiguration.get(SERVER_ENCRYPTION_KEY, null)))
-      }
+        hadoopConfiguration.get(SERVER_ENCRYPTION_KEY, null)))
+      } */
 
+      val algo = null
       val inputSerialization = new InputSerialization()
       val parquetInput = new ParquetInput()
       inputSerialization.setParquet(parquetInput)
@@ -104,20 +105,22 @@ object Select {
   }
 
   def requestJSON(bucket: String, key: String, params: Map[String, String],
-    schema: StructType, filters: Array[Filter],
-    hadoopConfiguration: Configuration): SelectObjectContentRequest = {
+    schema: StructType, filters: Array[Filter]): SelectObjectContentRequest = {
 
     new SelectObjectContentRequest() { request =>
       request.setBucketName(bucket)
       request.setKey(key)
       request.setExpression(FilterPushdown.queryFromSchema(schema, filters))
       request.setExpressionType(ExpressionType.SQL)
+
+      /* Temporarily removed hadoopConfiguration: Configuration as a parameter.
       val algo = hadoopConfiguration.get(SERVER_ENCRYPTION_ALGORITHM, null)
       if (algo != null) {
-        request.withSSECustomerKey(sseCustomerKey(algo,
-          hadoopConfiguration.get(SERVER_ENCRYPTION_KEY, null)))
-      }
+       request.withSSECustomerKey(sseCustomerKey(algo,
+         hadoopConfiguration.get(SERVER_ENCRYPTION_KEY, null)))
+      } */
 
+      val algo = null
       val inputSerialization = new InputSerialization()
       val jsonInput = new JSONInput()
       jsonInput.withType(jsonType(params))

@@ -64,6 +64,8 @@ object S3StoreFactory{
     var format = params.get("format")
     format.toLowerCase(Locale.ROOT) match {
       case "csv" => new S3StoreCSV(schema, params, filters)
+      case "json" => new S3StoreJSON(schema, params, filters)
+      case "parquet" => new S3StoreParquet(schema, params, filters)
     }
   }
 }
@@ -89,8 +91,6 @@ abstract class S3Store(schema: StructType,
     .withPathStyleAccessEnabled(true)
     .withCredentials(staticCredentialsProvider(s3Credential))
     .build()
-
-  def toString() : String;
 
   def getRows(): List[InternalRow];
 }
@@ -147,15 +147,124 @@ class S3StoreCSV(schema: StructType,
     } while (result.isTruncated())
     records.toList
   }
-  logger.info("S3Store: schema " + schema)
-  logger.info("S3Store: path " + params.get("path"))
-  logger.info("S3Store: endpoint " + params.get("endpoint"))
-  logger.info("S3Store: accessKey/secretKey " +
+  logger.info("S3StoreCSV: schema " + schema)
+  logger.info("S3StoreCSV: path " + params.get("path"))
+  logger.info("S3StoreCSV: endpoint " + params.get("endpoint"))
+  logger.info("S3StoreCSV: accessKey/secretKey " +
               params.get("accessKey") + "/" + params.get("secretKey"))
-  logger.info("S3Store: filters: " + filters.mkString(", "))
+  logger.info("S3StoreCSV: filters: " + filters.mkString(", "))
 }
 
+class S3StoreJSON(schema: StructType,
+                  params: java.util.Map[String, String],
+                  filters: Array[Filter]) extends S3Store(schema, params, filters) {
 
+  override def toString() : String = "S3StoreJSON" + params + filters.mkString(", ")
 
+  override def getRows(): List[InternalRow] = {
+    var records = new ListBuffer[InternalRow]
+    var req = new ListObjectsV2Request()
+    var result = new ListObjectsV2Result()
+    var s3URI = S3URI.toAmazonS3URI(path)
+    var params: Map[String, String] = Map("" -> "")
+
+    req.withBucketName(s3URI.getBucket())
+    req.withPrefix(s3URI.getKey().stripSuffix("*"))
+    req.withMaxKeys(1000)
+
+    do {
+      result = s3Client.listObjectsV2(req)
+      asScalaBuffer(result.getObjectSummaries()).foreach(objectSummary => {
+        val br = new BufferedReader(new InputStreamReader(
+          s3Client.selectObjectContent(
+            Select.requestJSON(
+              objectSummary.getBucketName(),
+              objectSummary.getKey(),
+              params,
+              schema,
+              filters)
+          ).getPayload().getRecordsInputStream()))
+        var line : String = null
+        while ( {line = br.readLine(); line != null}) {
+          var row = new Array[Any](schema.fields.length)
+          var rowValues = line.split(",")
+          var index = 0
+          while (index < rowValues.length) {
+            val field = schema.fields(index)
+            row(index) = TypeCast.castTo(rowValues(index), field.dataType,
+              field.nullable)
+            index += 1
+          }
+          records += InternalRow.fromSeq(row)
+        }
+        br.close()
+      })
+      req.setContinuationToken(result.getNextContinuationToken())
+    } while (result.isTruncated())
+    records.toList
+  }
+  logger.info("S3StoreJSON: schema " + schema)
+  logger.info("S3StoreJSON: path " + params.get("path"))
+  logger.info("S3StoreJSON: endpoint " + params.get("endpoint"))
+  logger.info("S3StoreJSON: accessKey/secretKey " +
+              params.get("accessKey") + "/" + params.get("secretKey"))
+  logger.info("S3StoreJSON: filters: " + filters.mkString(", "))
+}
+
+class S3StoreParquet(schema: StructType,
+                     params: java.util.Map[String, String],
+                     filters: Array[Filter]) extends S3Store(schema, params, filters) {
+
+  override def toString() : String = "S3StoreParquet" + params + filters.mkString(", ")
+
+  override def getRows(): List[InternalRow] = {
+    var records = new ListBuffer[InternalRow]
+    var req = new ListObjectsV2Request()
+    var result = new ListObjectsV2Result()
+    var s3URI = S3URI.toAmazonS3URI(path)
+    var params: Map[String, String] = Map("" -> "")
+
+    req.withBucketName(s3URI.getBucket())
+    req.withPrefix(s3URI.getKey().stripSuffix("*"))
+    req.withMaxKeys(1000)
+
+    do {
+      result = s3Client.listObjectsV2(req)
+      asScalaBuffer(result.getObjectSummaries()).foreach(objectSummary => {
+        val br = new BufferedReader(new InputStreamReader(
+          s3Client.selectObjectContent(
+            Select.requestParquet(
+              objectSummary.getBucketName(),
+              objectSummary.getKey(),
+              params,
+              schema,
+              filters)
+          ).getPayload().getRecordsInputStream()))
+        var line : String = null
+        while ( {line = br.readLine(); line != null}) {
+          var row = new Array[Any](schema.fields.length)
+          var rowValues = line.split(",")
+          var index = 0
+          while (index < rowValues.length) {
+            val field = schema.fields(index)
+            row(index) = TypeCast.castTo(rowValues(index), field.dataType,
+              field.nullable)
+            index += 1
+          }
+          records += InternalRow.fromSeq(row)
+        }
+        br.close()
+      })
+      req.setContinuationToken(result.getNextContinuationToken())
+    } while (result.isTruncated())
+    records.toList
+  }
+  logger.info("S3StoreParquet: schema " + schema)
+  logger.info("S3StoreParquet: path " + params.get("path"))
+  logger.info("S3StoreParquet: endpoint " + params.get("endpoint"))
+  logger.info("S3StoreParquet: accessKey/secretKey " +
+              params.get("accessKey") + "/" + params.get("secretKey"))
+  logger.info("S3StoreParquet: filters: " + filters.mkString(", "))
+}
 
 

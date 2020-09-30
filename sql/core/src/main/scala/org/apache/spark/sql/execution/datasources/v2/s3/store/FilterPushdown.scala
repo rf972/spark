@@ -56,8 +56,26 @@ private[store] object FilterPushdown {
         s"s." + s""""$attr"""" + s" $comparisonOp $sqlEscapedValue"
       }
     }
-
+    def buildOr(leftFilter: Option[String], rightFilter: Option[String]): Option[String] = {
+      val left = leftFilter.getOrElse("")
+      val right = rightFilter.getOrElse("")
+      Option(s"""( $left OR $right )""")
+    }
+    def buildAnd(leftFilter: Option[String], rightFilter: Option[String]): Option[String] = {
+      val left = leftFilter.getOrElse("")
+      val right = rightFilter.getOrElse("")
+      Option(s"""( $left AND $right )""")
+    }
+    def buildNot(filter: Option[String]): Option[String] = {
+      val f = filter.getOrElse("")
+      Option(s"""NOT ( $f )""")
+    }
     filter match {
+      case Or(left, right) => buildOr(buildFilterExpression(schema, left),
+                                      buildFilterExpression(schema, right))
+      case And(left, right) => buildAnd(buildFilterExpression(schema, left),
+                                        buildFilterExpression(schema, right))
+      case Not(filter) => buildNot(buildFilterExpression(schema, filter))
       case EqualTo(attr, value) => buildComparison(attr, value, "=")
       case LessThan(attr, value) => buildComparison(attr, value, "<")
       case GreaterThan(attr, value) => buildComparison(attr, value, ">")
