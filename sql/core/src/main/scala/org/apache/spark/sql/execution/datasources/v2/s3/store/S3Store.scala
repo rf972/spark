@@ -81,7 +81,7 @@ abstract class S3Store(schema: StructType,
       override def refresh(): Unit = {}
     }
   }
-  logger.info("S3Store Created")
+  logger.trace("S3Store Created")
 
   protected val s3Credential = new BasicAWSCredentials(params.get("accessKey"),
                                                      params.get("secretKey"))
@@ -117,7 +117,7 @@ class S3StoreCSV(schema: StructType,
       .withRecordSeparator("\n")
       .withDelimiter(params.getOrElse("delimiter", ",").charAt(0))
       .withQuote(params.getOrElse("quote", "\"").charAt(0))
-      .withEscape(params.getOrElse(s"escape", "\"").charAt(0))
+      .withEscape(params.getOrElse(s"escape", "\\").charAt(0))
       .withCommentMarker(params.getOrElse(s"comment", "#").charAt(0))
 
     do {
@@ -147,12 +147,12 @@ class S3StoreCSV(schema: StructType,
     } while (result.isTruncated())
     records.toList
   }
-  logger.info("S3StoreCSV: schema " + schema)
-  logger.info("S3StoreCSV: path " + params.get("path"))
-  logger.info("S3StoreCSV: endpoint " + params.get("endpoint"))
-  logger.info("S3StoreCSV: accessKey/secretKey " +
+  logger.trace("S3StoreCSV: schema " + schema)
+  logger.trace("S3StoreCSV: path " + params.get("path"))
+  logger.trace("S3StoreCSV: endpoint " + params.get("endpoint"))
+  logger.trace("S3StoreCSV: accessKey/secretKey " +
               params.get("accessKey") + "/" + params.get("secretKey"))
-  logger.info("S3StoreCSV: filters: " + filters.mkString(", "))
+  logger.trace("S3StoreCSV: filters: " + filters.mkString(", "))
 }
 
 class S3StoreJSON(schema: StructType,
@@ -203,12 +203,12 @@ class S3StoreJSON(schema: StructType,
     } while (result.isTruncated())
     records.toList
   }
-  logger.info("S3StoreJSON: schema " + schema)
-  logger.info("S3StoreJSON: path " + params.get("path"))
-  logger.info("S3StoreJSON: endpoint " + params.get("endpoint"))
-  logger.info("S3StoreJSON: accessKey/secretKey " +
+  logger.trace("S3StoreJSON: schema " + schema)
+  logger.trace("S3StoreJSON: path " + params.get("path"))
+  logger.trace("S3StoreJSON: endpoint " + params.get("endpoint"))
+  logger.trace("S3StoreJSON: accessKey/secretKey " +
               params.get("accessKey") + "/" + params.get("secretKey"))
-  logger.info("S3StoreJSON: filters: " + filters.mkString(", "))
+  logger.trace("S3StoreJSON: filters: " + filters.mkString(", "))
 }
 
 class S3StoreParquet(schema: StructType,
@@ -259,12 +259,12 @@ class S3StoreParquet(schema: StructType,
     } while (result.isTruncated())
     records.toList
   }
-  logger.info("S3StoreParquet: schema " + schema)
-  logger.info("S3StoreParquet: path " + params.get("path"))
-  logger.info("S3StoreParquet: endpoint " + params.get("endpoint"))
-  logger.info("S3StoreParquet: accessKey/secretKey " +
+  logger.trace("S3StoreParquet: schema " + schema)
+  logger.trace("S3StoreParquet: path " + params.get("path"))
+  logger.trace("S3StoreParquet: endpoint " + params.get("endpoint"))
+  logger.trace("S3StoreParquet: accessKey/secretKey " +
               params.get("accessKey") + "/" + params.get("secretKey"))
-  logger.info("S3StoreParquet: filters: " + filters.mkString(", "))
+  logger.trace("S3StoreParquet: filters: " + filters.mkString(", "))
 }
 
 

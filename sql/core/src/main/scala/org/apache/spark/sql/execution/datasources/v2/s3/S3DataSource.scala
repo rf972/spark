@@ -38,7 +38,7 @@ class DefaultSource extends TableProvider
   with SessionConfigSupport with DataSourceRegister {
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.info("S3 Data Source Created")
+  logger.trace("S3 Data Source Created")
   override def toString: String = s"S3DataSource()"
   override def supportsExternalMetadata(): Boolean = true
 
@@ -49,7 +49,7 @@ class DefaultSource extends TableProvider
   override def getTable(schema: StructType,
                         transforms: Array[Transform],
                         params: util.Map[String, String]): Table = {
-    logger.info("getTable: Options " + params)
+    logger.trace("getTable: Options " + params)
     new S3BatchTable(schema, params)
   }
 
@@ -64,7 +64,7 @@ class S3BatchTable(schema: StructType,
   extends Table with SupportsRead {
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.info("S3BatchTable Created")
+  logger.trace("S3BatchTable Created")
   override def name(): String = this.getClass.toString
 
   override def schema(): StructType = schema
@@ -77,36 +77,43 @@ class S3BatchTable(schema: StructType,
 }
 
 class S3ScanBuilder(schema: StructType,
-                      params: util.Map[String, String])
+                    params: util.Map[String, String])
   extends ScanBuilder with SupportsPushDownFilters {
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.info("S3ScanBuilder Created")
+  logger.trace("S3ScanBuilder Created")
 
-  var scanFilters: Array[Filter] = Array[Filter]()
+  var scanFilters: Array[Filter] = new Array[Filter](0)
 
   override def build(): Scan = new S3SimpleScan(schema, params, scanFilters)
 
   def pushedFilters: Array[Filter] = {
-    logger.info("S3ScanBuilder:pushedFilters" + scanFilters.toList)
+    logger.trace("S3ScanBuilder:pushedFilters" + scanFilters.toList)
     scanFilters
   }
 
   def pushFilters(filters: Array[Filter]): Array[Filter] = {
-    logger.info("S3ScanBuilder:pushFilters" + filters.toList)
-    scanFilters = filters
-    // return empty array to indicate we pushed down all the filters.
-    new Array[Filter](0)
+    logger.trace("S3ScanBuilder:pushFilters" + filters.toList)
+    if (params.containsKey("DisablePushDown")) {
+      filters
+    } else {
+      scanFilters = filters
+      // return empty array to indicate we pushed down all the filters.
+      // new Array[Filter](0)
+
+      // For now return all filters to indicate they need to be re-evaluated.
+      scanFilters
+    }
   }
 }
 
 class S3SimpleScan(schema: StructType,
-                     params: util.Map[String, String],
-                     filters: Array[Filter])
+                   params: util.Map[String, String],
+                   filters: Array[Filter])
       extends Scan with Batch{
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.info("S3SimpleScan Created")
+  logger.trace("S3SimpleScan Created")
   override def readSchema(): StructType = schema
 
   override def toBatch: Batch = this
@@ -121,23 +128,23 @@ class S3SimpleScan(schema: StructType,
 class S3Partition extends InputPartition
 
 class S3PartitionReaderFactory(schema: StructType,
-                                 params: util.Map[String, String],
-                                 filters: Array[Filter])
+                               params: util.Map[String, String],
+                               filters: Array[Filter])
   extends PartitionReaderFactory {
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.info("S3PartitionReaderFactory Created")
+  logger.trace("S3PartitionReaderFactory Created")
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
                  new S3PartitionReader(schema, params, filters)
 }
 
 class S3PartitionReader(schema: StructType,
-                          params: util.Map[String, String],
-                          filters: Array[Filter])
+                        params: util.Map[String, String],
+                        filters: Array[Filter])
   extends PartitionReader[InternalRow] {
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  logger.info("S3PartitionReader Created")
+  logger.trace("S3PartitionReader Created")
 
   private def getStaticRows(schema: StructType, filters: Array[Filter]):
                             Seq[InternalRow] = {
@@ -156,18 +163,18 @@ class S3PartitionReader(schema: StructType,
    */
   private var store: S3Store = S3StoreFactory.getS3Store(schema, params, filters)
   private var rows = store.getRows()
-  logger.info("S3PartitionReader: store " + store)
-  logger.info("S3PartitionReader: rows " + rows.mkString(", "))
-  logger.info("S3PartitionReader: schema " + schema)
-  logger.info("S3PartitionReader: params " + params)
-  logger.info("S3PartitionReader: filters: " + filters.mkString(", "))
+  logger.trace("S3PartitionReader: store " + store)
+  logger.trace("S3PartitionReader: rows " + rows.mkString(", "))
+  logger.trace("S3PartitionReader: schema " + schema)
+  logger.trace("S3PartitionReader: params " + params)
+  logger.trace("S3PartitionReader: filters: " + filters.mkString(", "))
 
   var index = 0
   def next: Boolean = index < rows.length
 
   def get: InternalRow = {
     val row = rows(index)
-    logger.info("S3PartitionReader.get " + row)
+    // logger.trace("S3PartitionReader.get " + row)
     index = index + 1
     row
   }
