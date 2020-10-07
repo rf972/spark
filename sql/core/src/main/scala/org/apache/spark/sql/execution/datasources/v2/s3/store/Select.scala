@@ -171,4 +171,39 @@ object Select {
       request.setOutputSerialization(outputSerialization)
     }
   }
+  def requestCount(bucket: String, key: String, params: Map[String, String],
+    schema: StructType): SelectObjectContentRequest = {
+    new SelectObjectContentRequest() { request =>
+      request.setBucketName(bucket)
+      request.setKey(key)
+      request.setExpression("SELECT COUNT(*) FROM S3Object s ")
+      request.setExpressionType(ExpressionType.SQL)
+
+      /* Disable for now until we get a hadoopConfig
+      val algo = hadoopConfiguration.get(SERVER_ENCRYPTION_ALGORITHM, null)
+      if (algo != null) {
+        request.withSSECustomerKey(sseCustomerKey(algo,
+          hadoopConfiguration.get(SERVER_ENCRYPTION_KEY, null)))
+      } */
+      val algo = null
+      val inputSerialization = new InputSerialization()
+      val csvInput = new CSVInput()
+      csvInput.withFileHeaderInfo(headerInfo(params))
+      csvInput.withRecordDelimiter('\n')
+      csvInput.withQuoteCharacter(params.getOrElse(s"quote", "\""))
+      csvInput.withQuoteEscapeCharacter(params.getOrElse(s"escape", "\""))
+      csvInput.withComments(params.getOrElse(s"comment", "#"))
+      csvInput.withFieldDelimiter(params.getOrElse(s"delimiter", ","))
+      inputSerialization.setCsv(csvInput)
+      inputSerialization.setCompressionType(compressionType(params))
+      request.setInputSerialization(inputSerialization)
+
+      val outputSerialization = new OutputSerialization()
+      val csvOutput = new CSVOutput()
+      csvOutput.withRecordDelimiter('\n')
+      csvOutput.withFieldDelimiter(params.getOrElse("delimiter", ","))
+      outputSerialization.setCsv(csvOutput)
+      request.setOutputSerialization(outputSerialization)
+    }
+  }
 }

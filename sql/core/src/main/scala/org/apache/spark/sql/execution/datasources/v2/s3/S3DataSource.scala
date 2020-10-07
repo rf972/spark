@@ -64,7 +64,7 @@ class S3BatchTable(schema: StructType,
   extends Table with SupportsRead {
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.trace("S3BatchTable Created")
+  logger.trace("Created")
   override def name(): String = this.getClass.toString
 
   override def schema(): StructType = schema
@@ -81,19 +81,19 @@ class S3ScanBuilder(schema: StructType,
   extends ScanBuilder with SupportsPushDownFilters {
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.trace("S3ScanBuilder Created")
+  logger.trace("Created")
 
   var scanFilters: Array[Filter] = new Array[Filter](0)
 
   override def build(): Scan = new S3SimpleScan(schema, params, scanFilters)
 
   def pushedFilters: Array[Filter] = {
-    logger.trace("S3ScanBuilder:pushedFilters" + scanFilters.toList)
+    logger.trace("pushedFilters" + scanFilters.toList)
     scanFilters
   }
 
   def pushFilters(filters: Array[Filter]): Array[Filter] = {
-    logger.trace("S3ScanBuilder:pushFilters" + filters.toList)
+    logger.trace("pushFilters" + filters.toList)
     if (params.containsKey("DisablePushDown")) {
       filters
     } else {
@@ -113,7 +113,7 @@ class S3SimpleScan(schema: StructType,
       extends Scan with Batch{
 
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.trace("S3SimpleScan Created")
+  logger.trace("Created")
   override def readSchema(): StructType = schema
 
   override def toBatch: Batch = this
@@ -132,7 +132,7 @@ class S3PartitionReaderFactory(schema: StructType,
                                filters: Array[Filter])
   extends PartitionReaderFactory {
   private val logger = LoggerFactory.getLogger(getClass)
-  logger.trace("S3PartitionReaderFactory Created")
+  logger.trace("Created")
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
                  new S3PartitionReader(schema, params, filters)
 }
@@ -144,7 +144,7 @@ class S3PartitionReader(schema: StructType,
 
   private val logger = LoggerFactory.getLogger(getClass)
 
-  logger.trace("S3PartitionReader Created")
+  logger.trace("Created")
 
   private def getStaticRows(schema: StructType, filters: Array[Filter]):
                             Seq[InternalRow] = {
@@ -163,18 +163,22 @@ class S3PartitionReader(schema: StructType,
    */
   private var store: S3Store = S3StoreFactory.getS3Store(schema, params, filters)
   private var rows = store.getRows()
+  private val length = rows.length
   logger.trace("S3PartitionReader: store " + store)
-  logger.trace("S3PartitionReader: rows " + rows.mkString(", "))
-  logger.trace("S3PartitionReader: schema " + schema)
-  logger.trace("S3PartitionReader: params " + params)
-  logger.trace("S3PartitionReader: filters: " + filters.mkString(", "))
+  // logger.trace("rows " + rows.mkString(", "))
+  logger.trace("schema " + schema)
+  logger.trace("params " + params)
+  logger.trace("filters: " + filters.mkString(", "))
 
   var index = 0
-  def next: Boolean = index < rows.length
+  def next: Boolean = index < length
 
   def get: InternalRow = {
     val row = rows(index)
-    // logger.trace("S3PartitionReader.get " + row)
+
+    if ((index % 500000) == 0) {
+      logger.info("get index: " + index)
+    }
     index = index + 1
     row
   }

@@ -20,6 +20,7 @@ package org.apache.spark.sql.execution.datasources.v2.s3.store
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.util
 import java.util.Locale
 
@@ -40,6 +41,7 @@ import com.amazonaws.services.s3.model.ListObjectsV2Request
 import com.amazonaws.services.s3.model.ListObjectsV2Result
 import com.amazonaws.services.s3.model.S3ObjectSummary
 import org.apache.commons.csv._
+import org.apache.commons.io.IOUtils
 import org.slf4j.LoggerFactory
 
 import org.apache.spark.rdd.RDD
@@ -92,7 +94,44 @@ abstract class S3Store(schema: StructType,
     .withCredentials(staticCredentialsProvider(s3Credential))
     .build()
 
-  def getRows(): List[InternalRow];
+  def getRows(): ArrayBuffer[InternalRow];
+
+  def getNumRows(): Int = {
+    var req = new ListObjectsV2Request()
+    var result = new ListObjectsV2Result()
+    var s3URI = S3URI.toAmazonS3URI(path)
+    var params: Map[String, String] = Map("" -> "")
+    val csvFormat = CSVFormat.DEFAULT
+      .withHeader(schema.fields.map(x => x.name): _*)
+      .withRecordSeparator("\n")
+      .withDelimiter(params.getOrElse("delimiter", ",").charAt(0))
+      .withQuote(params.getOrElse("quote", "\"").charAt(0))
+      .withEscape(params.getOrElse(s"escape", "\\").charAt(0))
+      .withCommentMarker(params.getOrElse(s"comment", "#").charAt(0))
+
+    req.withBucketName(s3URI.getBucket())
+    req.withPrefix(s3URI.getKey().stripSuffix("*"))
+    req.withMaxKeys(1000)
+
+    var rows : Int = 0
+    do {
+      result = s3Client.listObjectsV2(req)
+      result.getObjectSummaries().asScala.foreach(objectSummary => {
+        val in = s3Client.selectObjectContent(
+          Select.requestCount(
+            objectSummary.getBucketName(),
+            objectSummary.getKey(),
+            params,
+            schema)
+        ).getPayload().getRecordsInputStream()
+        val countStr: String = IOUtils.toString(in, StandardCharsets.UTF_8);
+        rows = countStr.filter(_ >= ' ').toInt
+        logger.trace("count is:" + rows)
+      })
+      req.setContinuationToken(result.getNextContinuationToken())
+    } while (result.isTruncated())
+    rows
+  }
 }
 
 class S3StoreCSV(schema: StructType,
@@ -101,8 +140,9 @@ class S3StoreCSV(schema: StructType,
 
   override def toString() : String = "S3StoreCSV" + params + filters.mkString(", ")
 
-  override def getRows(): List[InternalRow] = {
-    var records = new ListBuffer[InternalRow]
+  override def getRows(): ArrayBuffer[InternalRow] = {
+    val numRows = getNumRows()
+    var records = new ArrayBuffer[InternalRow](numRows)
     var req = new ListObjectsV2Request()
     var result = new ListObjectsV2Result()
     var s3URI = S3URI.toAmazonS3URI(path)
@@ -132,20 +172,24 @@ class S3StoreCSV(schema: StructType,
             filters)
         ).getPayload().getRecordsInputStream()
         var parser = CSVParser.parse(in, java.nio.charset.Charset.forName("UTF-8"), csvFormat)
+        var index: Int = 0
         try {
           for (record <- parser.asScala) {
             records += InternalRow.fromSeq(schema.fields.map(x => {
               TypeCast.castTo(record.get(x.name), x.dataType, x.nullable)
             }))
+            if ((index % 500000) == 0) { logger.info("index: " + index) }
+            index += 1
           }
         } catch {
           case NonFatal(e) => logger.error(s"Exception while parsing ", e)
         }
+        logger.info("getRows() total rows:" + index)
         parser.close()
       })
       req.setContinuationToken(result.getNextContinuationToken())
     } while (result.isTruncated())
-    records.toList
+    records
   }
   logger.trace("S3StoreCSV: schema " + schema)
   logger.trace("S3StoreCSV: path " + params.get("path"))
@@ -161,8 +205,8 @@ class S3StoreJSON(schema: StructType,
 
   override def toString() : String = "S3StoreJSON" + params + filters.mkString(", ")
 
-  override def getRows(): List[InternalRow] = {
-    var records = new ListBuffer[InternalRow]
+  override def getRows(): ArrayBuffer[InternalRow] = {
+    var records = new ArrayBuffer[InternalRow]
     var req = new ListObjectsV2Request()
     var result = new ListObjectsV2Result()
     var s3URI = S3URI.toAmazonS3URI(path)
@@ -201,7 +245,7 @@ class S3StoreJSON(schema: StructType,
       })
       req.setContinuationToken(result.getNextContinuationToken())
     } while (result.isTruncated())
-    records.toList
+    records
   }
   logger.trace("S3StoreJSON: schema " + schema)
   logger.trace("S3StoreJSON: path " + params.get("path"))
@@ -217,8 +261,8 @@ class S3StoreParquet(schema: StructType,
 
   override def toString() : String = "S3StoreParquet" + params + filters.mkString(", ")
 
-  override def getRows(): List[InternalRow] = {
-    var records = new ListBuffer[InternalRow]
+  override def getRows(): ArrayBuffer[InternalRow] = {
+    var records = new ArrayBuffer[InternalRow]
     var req = new ListObjectsV2Request()
     var result = new ListObjectsV2Result()
     var s3URI = S3URI.toAmazonS3URI(path)
@@ -257,7 +301,7 @@ class S3StoreParquet(schema: StructType,
       })
       req.setContinuationToken(result.getNextContinuationToken())
     } while (result.isTruncated())
-    records.toList
+    records
   }
   logger.trace("S3StoreParquet: schema " + schema)
   logger.trace("S3StoreParquet: path " + params.get("path"))
