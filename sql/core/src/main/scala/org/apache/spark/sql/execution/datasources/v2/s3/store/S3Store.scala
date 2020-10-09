@@ -57,11 +57,10 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 
-
 object S3StoreFactory{
   def getS3Store(schema: StructType,
-            params: java.util.Map[String, String],
-            filters: Array[Filter]): S3Store = {
+                 params: java.util.Map[String, String],
+                 filters: Array[Filter]): S3Store = {
 
     var format = params.get("format")
     format.toLowerCase(Locale.ROOT) match {
@@ -94,7 +93,7 @@ abstract class S3Store(schema: StructType,
     .withCredentials(staticCredentialsProvider(s3Credential))
     .build()
 
-  def getRows(): ArrayBuffer[InternalRow];
+  def getRows(partition: S3Partition): ArrayBuffer[InternalRow];
 
   def getNumRows(): Int = {
     var req = new ListObjectsV2Request()
@@ -136,11 +135,12 @@ abstract class S3Store(schema: StructType,
 
 class S3StoreCSV(schema: StructType,
                  params: java.util.Map[String, String],
-                 filters: Array[Filter]) extends S3Store(schema, params, filters) {
+                 filters: Array[Filter])
+                 extends S3Store(schema, params, filters) {
 
   override def toString() : String = "S3StoreCSV" + params + filters.mkString(", ")
 
-  override def getRows(): ArrayBuffer[InternalRow] = {
+  override def getRows(partition: S3Partition): ArrayBuffer[InternalRow] = {
     val numRows = getNumRows()
     var records = new ArrayBuffer[InternalRow](numRows)
     var req = new ListObjectsV2Request()
@@ -169,7 +169,8 @@ class S3StoreCSV(schema: StructType,
             objectSummary.getKey(),
             params,
             schema,
-            filters)
+            filters,
+            partition)
         ).getPayload().getRecordsInputStream()
         var parser = CSVParser.parse(in, java.nio.charset.Charset.forName("UTF-8"), csvFormat)
         var index: Int = 0
@@ -178,13 +179,15 @@ class S3StoreCSV(schema: StructType,
             records += InternalRow.fromSeq(schema.fields.map(x => {
               TypeCast.castTo(record.get(x.name), x.dataType, x.nullable)
             }))
-            if ((index % 500000) == 0) { logger.info("index: " + index) }
+            if ((index % 500000) == 0) {
+              logger.info("partition: " + partition.index + " index: " + index)
+            }
             index += 1
           }
         } catch {
           case NonFatal(e) => logger.error(s"Exception while parsing ", e)
         }
-        logger.info("getRows() total rows:" + index)
+        logger.info("getRows() partition: " + partition.index + " total rows:" + index)
         parser.close()
       })
       req.setContinuationToken(result.getNextContinuationToken())
@@ -205,7 +208,7 @@ class S3StoreJSON(schema: StructType,
 
   override def toString() : String = "S3StoreJSON" + params + filters.mkString(", ")
 
-  override def getRows(): ArrayBuffer[InternalRow] = {
+  override def getRows(partition: S3Partition): ArrayBuffer[InternalRow] = {
     var records = new ArrayBuffer[InternalRow]
     var req = new ListObjectsV2Request()
     var result = new ListObjectsV2Result()
@@ -226,7 +229,8 @@ class S3StoreJSON(schema: StructType,
               objectSummary.getKey(),
               params,
               schema,
-              filters)
+              filters,
+              partition)
           ).getPayload().getRecordsInputStream()))
         var line : String = null
         while ( {line = br.readLine(); line != null}) {
@@ -261,7 +265,7 @@ class S3StoreParquet(schema: StructType,
 
   override def toString() : String = "S3StoreParquet" + params + filters.mkString(", ")
 
-  override def getRows(): ArrayBuffer[InternalRow] = {
+  override def getRows(partition: S3Partition): ArrayBuffer[InternalRow] = {
     var records = new ArrayBuffer[InternalRow]
     var req = new ListObjectsV2Request()
     var result = new ListObjectsV2Result()
@@ -282,7 +286,8 @@ class S3StoreParquet(schema: StructType,
               objectSummary.getKey(),
               params,
               schema,
-              filters)
+              filters,
+              partition)
           ).getPayload().getRecordsInputStream()))
         var line : String = null
         while ( {line = br.readLine(); line != null}) {

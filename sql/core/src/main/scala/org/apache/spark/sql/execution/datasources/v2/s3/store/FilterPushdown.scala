@@ -96,18 +96,30 @@ private[store] object FilterPushdown {
       None
     }
   }
-
-  def queryFromSchema(schema: StructType, filters: Array[Filter]): String = {
+  private def buildObjectClause(partition: S3Partition): String = {
+    // Treat this as the one and only partition.
+    // Some sources like minio can't handle partitions, so this
+    // gives us a way to be compatible with them.
+    if (partition.onlyPartition) {
+      "S3Object"
+    } else {
+      s"""(SELECT * FROM S3Object LIMIT ${partition.numRows} OFFSET ${partition.rowOffset})"""
+    }
+  }
+  def queryFromSchema(schema: StructType,
+                      filters: Array[Filter],
+                      partition: S3Partition): String = {
     var columnList = schema.fields.map(x => s"s." + s""""${x.name}"""").mkString(",")
     if (columnList.length == 0) {
       columnList = "*"
     }
     val whereClause = buildWhereClause(schema, filters)
+    val objectClause = buildObjectClause(partition)
     var retVal = ""
     if (whereClause.length == 0) {
-      retVal = s"select $columnList from S3Object s"
+      retVal = s"select $columnList from $objectClause s"
     } else {
-      retVal = s"select $columnList from S3Object s $whereClause"
+      retVal = s"select $columnList from $objectClause s $whereClause"
     }
     printf("The SQL string is: %s\n", retVal);
     retVal
