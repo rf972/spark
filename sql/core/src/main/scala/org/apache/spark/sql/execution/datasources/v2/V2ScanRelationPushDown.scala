@@ -17,6 +17,8 @@
 
 package org.apache.spark.sql.execution.datasources.v2
 
+import java.util.Locale
+
 import scala.collection.mutable.ArrayBuilder
 
 import org.apache.spark.sql.catalyst.expressions._
@@ -75,49 +77,62 @@ object V2ScanRelationPushDown extends Rule[LogicalPlan] {
           } else {
             val resultAttributes = resultExpressions.map(_.toAttribute)
               .map ( e => e match { case a: AttributeReference => a })
-            var index = 0
-            val aggOutputBuilder = ArrayBuilder.make[AttributeReference]
-            for (a <- resultAttributes) {
-              val newName = if (a.name.contains("FILTER")) {
-                a.name.substring(0, a.name.indexOf("FILTER") - 1)
-              } else if (a.name.contains("DISTINCT")) {
-                a.name.replace("DISTINCT ", "")
-              } else {
-                a.name
-              }
 
-              aggOutputBuilder +=
-                a.copy(name = newName,
-                  dataType = aggregates(index).dataType)(exprId = NamedExpression.newExprId,
-                  qualifier = a.qualifier)
-              index += 1
+            val aggOutputBuilder = ArrayBuilder.make[AttributeReference]
+            val outputBuilder = ArrayBuilder.make[AttributeReference]
+            var aggMap = scala.collection.mutable.Map[Integer, AttributeReference]()
+            for (col <- output) {
+              if (!aggregates.exists(
+                _.toString.toLowerCase(Locale.ROOT).contains(col.name.toLowerCase(Locale.ROOT)))) {
+                outputBuilder += col
+              } else {
+                var index = 0
+                for (a <- resultAttributes) {
+                  val newName = if (a.name.contains("FILTER")) {
+                    a.name.substring(0, a.name.indexOf("FILTER") - 1)
+                  } else if (a.name.contains("DISTINCT")) {
+                    a.name.replace("DISTINCT ", "")
+                  } else {
+                    a.name
+                  }
+                  val colName = col.name.toLowerCase(Locale.ROOT)
+                  if (newName.toLowerCase(Locale.ROOT).contains('(' + colName + ')') ||
+                      newName.toLowerCase(Locale.ROOT).contains(colName + '#')) {
+                      val newAttrib = a.copy(name = newName,
+                        dataType = aggregates(index).dataType)(exprId = NamedExpression.newExprId,
+                        qualifier = a.qualifier)
+                    aggOutputBuilder += newAttrib
+                    outputBuilder += newAttrib
+                    aggMap(index) = newAttrib
+                  }
+                  if (newName.toLowerCase(Locale.ROOT).contains("sum") ||
+                      newName.toLowerCase(Locale.ROOT).contains("min") ||
+                      newName.toLowerCase(Locale.ROOT).contains("max") ||
+                      newName.toLowerCase(Locale.ROOT).contains("avg")) {
+                    index += 1
+                  }
+                }
+              }
             }
             val aggOutput = aggOutputBuilder.result
-
-            var newOutput = aggOutput
-            for (col <- output) {
-              if (!aggOutput.exists(_.name.contains(col.name))) {
-                newOutput = col +: newOutput
-              }
-            }
-
+            var newOutput = outputBuilder.result
             val r = buildLogicalPlan(newOutput, relation, wrappedScan, newOutput,
               normalizedProjects, postScanFilters)
             val plan = Aggregate(groupingExpressions, resultExpressions, r)
 
             var i = 0
-            plan.transformExpressions {
+            var p = plan.transformExpressions {
               case agg: AggregateExpression =>
                 i += 1
                 val aggFunction: aggregate.AggregateFunction = {
                   if (agg.aggregateFunction.isInstanceOf[aggregate.Max]) {
-                    aggregate.Max(aggOutput(i - 1))
+                    aggregate.Max(aggMap(i - 1))
                   } else if (agg.aggregateFunction.isInstanceOf[aggregate.Min]) {
-                    aggregate.Min(aggOutput(i - 1))
+                    aggregate.Min(aggMap(i - 1))
                   } else if (agg.aggregateFunction.isInstanceOf[aggregate.Average]) {
-                    aggregate.Average(aggOutput(i - 1))
+                    aggregate.Average(aggMap(i - 1))
                   } else if (agg.aggregateFunction.isInstanceOf[aggregate.Sum]) {
-                    aggregate.Sum(aggOutput(i - 1))
+                    aggregate.Sum(aggMap(i - 1))
                   } else {
                     agg.aggregateFunction
                   }
@@ -125,6 +140,7 @@ object V2ScanRelationPushDown extends Rule[LogicalPlan] {
                 // Aggregate filter is pushed to datasource
                 agg.copy(aggregateFunction = aggFunction, filter = None)
             }
+            p
           }
 
         case _ =>
