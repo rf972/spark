@@ -17,10 +17,11 @@
 
 package org.apache.spark.sql.sources
 
-case class Aggregation(aggregateExpressions: Seq[AggregateFunc],
+case class Aggregation(aggregateExpressions: Seq[AggregationExpr],
                        groupByExpressions: Seq[String])
-
-abstract class AggregateFunc
+abstract class AggregationExpr
+case class AggregationRef(column: String) extends AggregationExpr
+abstract class AggregateFunc extends AggregationExpr
 
 // Todo: add Count
 

@@ -43,12 +43,16 @@ object V2ScanRelationPushDown extends Rule[LogicalPlan] {
       child match {
         case ScanOperation(project, filters, relation: DataSourceV2Relation) =>
           val scanBuilder = relation.table.asReadable.newScanBuilder(relation.options)
-          val aggregates = resultExpressions.flatMap { expr =>
+          logInfo(resultExpressions.toString)
+          /* val aggregates = resultExpressions.flatMap { expr =>
             expr.collect {
-              case agg: AggregateExpression => agg
+              case agg: AggregateExpression =>
+                logInfo(agg.toString)
+                agg
+              // case attrRef: AttributeReference => attrRef
             }
-          }.distinct
-
+          }.distinct */
+          val aggregates = PushDownUtils.getAggOutputExpressions(resultExpressions)
           val aggregation = PushDownUtils.pushAggregates(scanBuilder, aggregates,
             groupingExpressions)
 
@@ -77,24 +81,38 @@ object V2ScanRelationPushDown extends Rule[LogicalPlan] {
               postScanFilters)
             Aggregate(groupingExpressions, resultExpressions, plan)
           } else {
+            val resultAttributes = resultExpressions.map(_.toAttribute)
+              .map ( e => e match { case a: AttributeReference => a })
             val aggOutputBuilder = ArrayBuilder.make[AttributeReference]
-            for (a <- aggregates) {
-                aggOutputBuilder += AttributeReference(toPrettySQL(a), a.dataType)()
-            }
-            val aggOutput = aggOutputBuilder.result
-
             val newOutputBuilder = ArrayBuilder.make[AttributeReference]
+            for (a <- aggregates) {
+              a match {
+                case agg: AggregateExpression =>
+                  aggOutputBuilder += AttributeReference (toPrettySQL (a), a.dataType) ()
+                  newOutputBuilder += AttributeReference (toPrettySQL (a), a.dataType) ()
+                case attr: AttributeReference =>
+                  newOutputBuilder += attr
+              }
+            }
+            /* var columnMap: scala.collection.mutable.Map[String, Boolean] =
+              scala.collection.mutable.Map()
+            var aggMap: scala.collection.mutable.Map[String, Boolean] =
+              scala.collection.mutable.Map()
+            for (i <- output) { columnMap += (i.name -> false) }
+            for (i <- aggOutput) { aggMap += (i.name -> false) }
             for (col1 <- output) {
-              var found = false
               for (col2 <- aggOutput) {
                   if (contains(col2.name, col1.name)) {
-                    newOutputBuilder += col2
-                    found = true
+                    columnMap(col1.name) = true
+                    if (!aggMap(col2.name)) {
+                      newOutputBuilder += col2
+                      aggMap(col2.name) = true
+                    }
                   }
               }
-              if (!found) newOutputBuilder += col1
-
-            }
+              if (!columnMap(col1.name)) newOutputBuilder += col1
+            } */
+            val aggOutput = aggOutputBuilder.result
             val newOutput = newOutputBuilder.result
 
             val r = buildLogicalPlan(newOutput, relation, wrappedScan, newOutput,
@@ -206,11 +224,23 @@ object V2ScanRelationPushDown extends Rule[LogicalPlan] {
   }
 
   private def contains(s1: String, s2: String): Boolean = {
+    var s1Array = s1.filter(!_.isDigit).filterNot("#".toSet)
+                    .split("[*+-/()]")
+    var found = false
+    var filterWords = Array("sum", "min", "max", "avg", "cast", "as")
     if (SQLConf.get.caseSensitiveAnalysis) {
-      s1.contains(s2)
+      s1Array = s1Array.filter(s1 => !filterWords.contains(s1.replaceAll("\\s", "")))
+      for (s1New <- s1Array; if !found) {
+        if (s1New.contains(s2)) found = true
+      }
     } else {
-      s1.toLowerCase(Locale.ROOT).contains(s2.toLowerCase(Locale.ROOT))
+      s1Array = s1Array.filter(s1 => !filterWords.contains(
+        s1.replaceAll("\\s", "").toLowerCase(Locale.ROOT))).filterNot(_ == "")
+      for (s1New <- s1Array; if !found) {
+        if (s1New.toLowerCase(Locale.ROOT).contains(s2.toLowerCase(Locale.ROOT))) found = true
+      }
     }
+    found
   }
 }
 

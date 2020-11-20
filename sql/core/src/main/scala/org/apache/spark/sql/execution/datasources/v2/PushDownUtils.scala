@@ -25,7 +25,7 @@ import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.execution.datasources.DataSourceStrategy
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.sources
-import org.apache.spark.sql.sources.{AggregateFunc, Aggregation}
+import org.apache.spark.sql.sources.{AggregateFunc, Aggregation, AggregationExpr, AggregationRef}
 import org.apache.spark.sql.types.StructType
 
 object PushDownUtils extends PredicateHelper {
@@ -71,6 +71,23 @@ object PushDownUtils extends PredicateHelper {
       case _ => (Nil, filters)
     }
   }
+  def getAggOutputExpressions(resultExpressions: Seq[NamedExpression]):
+      Seq[Expression] = {
+    var level: Integer = 0
+    resultExpressions.flatMap { expr =>
+      expr.collect {
+        case agg: AggregateExpression =>
+          logInfo(level + ": " + agg.toString)
+          level += agg.references.size
+          agg
+        case attrib: AttributeReference
+          if ({if (level == 0) true else { level -= 1; false } }) =>
+          // We only keep track of top level references.
+          logInfo(level + ": " + attrib.toString)
+          attrib
+      }
+    }
+  }
 
     /**
      * Pushes down aggregates to the data source reader
@@ -79,20 +96,25 @@ object PushDownUtils extends PredicateHelper {
      */
     def pushAggregates(
         scanBuilder: ScanBuilder,
-        aggregates: Seq[AggregateExpression],
+        aggregates: Seq[Any],
         groupby: Seq[Expression]): Aggregation = {
       scanBuilder match {
         case r: SupportsPushDownAggregates =>
-          val translatedAggregates = mutable.ArrayBuffer.empty[sources.AggregateFunc]
+          val translatedAggregates = mutable.ArrayBuffer.empty[sources.AggregationExpr]
           // Catalyst aggregate expression that can't be translated to data source aggregates.
           val untranslatableExprs = mutable.ArrayBuffer.empty[AggregateExpression]
 
           for (aggregateExpr <- aggregates) {
-            val translated = DataSourceStrategy.translateAggregate(aggregateExpr)
-            if (translated.isEmpty) {
-              untranslatableExprs += aggregateExpr
-            } else {
-              translatedAggregates += translated.get
+            aggregateExpr match {
+              case agg: AggregateExpression =>
+                val translated = DataSourceStrategy.translateAggregate(agg)
+                if (translated.isEmpty) {
+                  untranslatableExprs += agg
+                } else {
+                  translatedAggregates += translated.get
+                }
+              case ref: AttributeReference =>
+                translatedAggregates += AggregationRef(ref.name)
             }
           }
 

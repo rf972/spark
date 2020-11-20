@@ -701,8 +701,16 @@ object DataSourceStrategy extends PredicateHelper {
       case AttributeReference(name, _, _, _) => name
       case Cast(child, _, _) => child match {
         case AttributeReference(name, _, _, _) => name
+        case addExpr@Add(right: AttributeReference, left: AttributeReference) =>
+          right.name + " + " + left.name
+        case multExpr@Multiply(right: AttributeReference, left: AttributeReference) =>
+          right.name + " * " + left.name
         case _ => ""
       }
+      case addExpr@Add(right: AttributeReference, left: AttributeReference) =>
+        right.name + " + " + left.name
+      case mult@Multiply(right: AttributeReference, left: AttributeReference) =>
+        right.name + " * " + left.name
       case _ => ""
     }
 
@@ -722,8 +730,9 @@ object DataSourceStrategy extends PredicateHelper {
       case aggregate.Average(child) =>
         val columnName = columnAsString(child)
         if (!columnName.isEmpty) Some(Avg(columnName, aggregates.isDistinct, filter)) else None
-      case aggregate.Sum(child) =>
+      case aggExpr@aggregate.Sum(child) =>
         val columnName = columnAsString(child)
+        logInfo(aggExpr.toString)
         if (!columnName.isEmpty) Some(Sum(columnName, aggregates.isDistinct, filter)) else None
       case _ => None
     }

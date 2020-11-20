@@ -134,7 +134,7 @@ object JDBCRDD extends Logging {
   }
 
   def compileAggregates(
-      aggregates: Seq[AggregateFunc],
+      aggregates: Seq[AggregationExpr],
       dialect: JdbcDialect): (Map[String, Array[String]], Array[Filter]) = {
     var filters = Array.empty[Filter]
     def quote(colName: String): String = dialect.quoteIdentifier(colName)
