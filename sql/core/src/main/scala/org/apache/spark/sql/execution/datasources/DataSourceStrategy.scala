@@ -751,10 +751,10 @@ object DataSourceStrategy
         if (!columnName.isEmpty) Some(Max(columnName)) else None
       case aggregate.Average(child) =>
         val columnName = columnAsString(child)
-        if (!columnName.isEmpty) Some(Avg(columnName)) else None
+        if (!columnName.isEmpty) Some(Avg(columnName, aggregates.isDistinct)) else None
       case aggregate.Sum(child) =>
         val columnName = columnAsString(child)
-        if (!columnName.isEmpty) Some(Sum(columnName)) else None
+        if (!columnName.isEmpty) Some(Sum(columnName, aggregates.isDistinct)) else None
       case _ => None
     }
   }

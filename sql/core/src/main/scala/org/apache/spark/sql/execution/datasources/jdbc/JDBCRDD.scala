@@ -155,19 +155,21 @@ object JDBCRDD extends Logging {
         } else {
           aggBuilder += s"MAX(${quoteEachCols(column, dialect)})"
         }
-      case Sum(column) =>
+      case Sum(column, isDistinct) =>
+        val distinct = if (isDistinct) "DISTINCT " else ""
         if (!column.contains("+") && !column.contains("-") && !column.contains("*")
           && !column.contains("/")) {
-          aggBuilder += s"SUM(${quote(column)})"
+          aggBuilder += s"SUM(${distinct}${quote(column)})"
         } else {
-          aggBuilder += s"SUM(${quoteEachCols(column, dialect)})"
+          aggBuilder += s"SUM(${distinct}${quoteEachCols(column, dialect)})"
         }
-      case Avg(column) =>
+      case Avg(column, isDistinct) =>
+        val distinct = if (isDistinct) "DISTINCT " else ""
         if (!column.contains("+") && !column.contains("-") && !column.contains("*")
           && !column.contains("/")) {
-          aggBuilder += s"AVG(${quote(column)})"
+          aggBuilder += s"AVG(${distinct}${quote(column)})"
         } else {
-          aggBuilder += s"AVG(${quoteEachCols(column, dialect)})"
+          aggBuilder += s"AVG(${distinct}${quoteEachCols(column, dialect)})"
         }
       case _ =>
     }
@@ -267,18 +269,21 @@ private[jdbc] class JDBCRDD(
   private def getAggregateColumnsList(sb: StringBuilder, compiledAgg: Array[String]) = {
     val colDataTypeMap: Map[String, StructField] = columns.zip(schema.fields).toMap
     val newColsBuilder = ArrayBuilder.make[String]
+    val newColsBuilderSchema = ArrayBuilder.make[String]
     for (col <- compiledAgg) {
       newColsBuilder += col
-
+      newColsBuilderSchema += col.replace("DISTINCT ", "")
     }
     for (groupBy <- aggregation.groupByExpressions) {
       newColsBuilder += JdbcDialects.get(url).quoteIdentifier(groupBy)
+      newColsBuilderSchema += JdbcDialects.get(url).quoteIdentifier(groupBy)
     }
     val newColumns = newColsBuilder.result
     sb.append(", ").append(newColumns.mkString(", "))
 
+    val newColumnsSchema = newColsBuilderSchema.result
     // build new schemas
-    for (c <- newColumns) {
+    for (c <- newColumnsSchema) {
       val colName: Array[String] = if (!c.contains("+") && !c.contains("-") && !c.contains("*")
         && !c.contains("/")) {
         if (c.contains("MAX") || c.contains("MIN") || c.contains("SUM") || c.contains("AVG")) {
